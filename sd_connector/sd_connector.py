@@ -4,7 +4,7 @@
 
 import datetime
 from functools import partial
-from typing import Union
+from typing import Optional, Union
 from uuid import UUID
 
 import aiohttp
@@ -56,7 +56,7 @@ class SDConnector:
         return params
 
     def _enrich_with_department(
-        self, params: dict, department_identifier: Union[str, UUID] = None
+        self, params: dict, department_identifier: Optional[Union[str, UUID]] = None
     ) -> dict:
         if department_identifier is None:
             return params
@@ -69,8 +69,8 @@ class SDConnector:
     def _enrich_with_dates(
         self,
         params: dict,
-        start_date: datetime.date = None,
-        end_date: datetime.date = None,
+        start_date: Optional[datetime.date] = None,
+        end_date: Optional[datetime.date] = None,
     ) -> dict:
         start_date = start_date or today()
         end_date = end_date or today()
@@ -108,8 +108,8 @@ class SDConnector:
 
     async def getOrganization(
         self,
-        start_date: datetime.date = None,
-        end_date: datetime.date = None,
+        start_date: Optional[datetime.date] = None,
+        end_date: Optional[datetime.date] = None,
     ) -> dict:
         params = {
             "UUIDIndicator": "true",
@@ -122,10 +122,10 @@ class SDConnector:
 
     async def getDepartment(
         self,
-        department_identifier: Union[str, UUID] = None,
-        department_level_identifier: str = None,
-        start_date: datetime.date = None,
-        end_date: datetime.date = None,
+        department_identifier: Optional[Union[str, UUID]] = None,
+        department_level_identifier: Optional[str] = None,
+        start_date: Optional[datetime.date] = None,
+        end_date: Optional[datetime.date] = None,
     ) -> dict:
         params = {
             "ContactInformationIndicator": "true",
@@ -148,7 +148,7 @@ class SDConnector:
     async def getDepartmentParent(
         self,
         department_uuid_identifier: Union[str, UUID],
-        effective_date: datetime.date = None,
+        effective_date: Optional[datetime.date] = None,
     ) -> dict:
         effective_date = effective_date or today()
         params = {
