@@ -1,10 +1,7 @@
+# SPDX-FileCopyrightText: Magenta ApS
 #
-# Copyright (c) 2017, Magenta ApS
-#
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at http://mozilla.org/MPL/2.0/.
-#
+# SPDX-License-Identifier: MPL-2.0
+
 import setuptools
 
 with open("README.md", "r", encoding="utf-8") as fh:
@@ -29,6 +26,21 @@ setuptools.setup(
         'aiohttp',
         'xmltodict',
     ],
+    extras_require={
+        'lint': [
+            'mypy',
+            'black',
+            'isort',
+        ],
+        'test': [
+            'pytest',
+            'pytest-cov',
+        ],
+        'dist': [
+            'build',
+            'twine',
+        ],
+    },
     packages=setuptools.find_packages(),
     python_requires='>=3.6',
 )
