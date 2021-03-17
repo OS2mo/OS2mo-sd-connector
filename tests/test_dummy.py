@@ -4,6 +4,7 @@
 
 from unittest import TestCase
 
+
 class DummyTests(TestCase):
     def test_dummy(self):
         pass
