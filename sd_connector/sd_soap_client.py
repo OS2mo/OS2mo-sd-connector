@@ -104,8 +104,8 @@ class AsyncSDSoapClient(SDSoapClientBase):
 
     @lru_cache(maxsize=None)
     def _create_async_client(self, username: str, password: str):
-        self.httpx_client = httpx.AsyncClient(auth=(username, password))
-        wsdl_client = httpx.Client(auth=(username, password))
+        self.httpx_client = httpx.AsyncClient(auth=(username, password), timeout=60)
+        wsdl_client = httpx.Client(auth=(username, password), timeout=60)
         return self.httpx_client, wsdl_client
 
     def _create_client(
@@ -113,7 +113,7 @@ class AsyncSDSoapClient(SDSoapClientBase):
     ) -> AsyncClient:
         httpx_client, wsdl_client = self._create_async_client(username, password)
         client = AsyncClient(
-            wsdl, transport=AsyncTransport(client=httpx_client, wsdl_client=wsdl_client, cache=SqliteCache())
+            wsdl, transport=AsyncTransport(client=httpx_client, wsdl_client=wsdl_client, cache=SqliteCache(), timeout=60)
         )
         return client
 
@@ -135,7 +135,7 @@ class SDSoapClient(SDSoapClientBase):
 
     def _create_client(self, wsdl: StringIO, username: str, password: str) -> Client:
         session = self._create_session(username, password)
-        client = Client(wsdl, transport=Transport(session=session, cache=SqliteCache()))
+        client = Client(wsdl, transport=Transport(session=session, cache=SqliteCache(), timeout=60))
         return client
 
     def _create_service_proxy(self, client: Client, binding: Any, **kwargs) -> Any:

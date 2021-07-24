@@ -342,7 +342,7 @@ class AsyncSDConnector:
     @retry(
         reraise=True,
         wait=wait_exponential(multiplier=2, min=1),
-        stop=stop_after_attempt(7),
+        stop=stop_after_attempt(5),
     )
     async def call_soap(self, endpoint: str, params: Dict[str, Any]) -> Any:
         return await getattr(self.asoap_client, endpoint)(**params)
@@ -415,7 +415,7 @@ class SDConnector:
     @retry(
         reraise=True,
         wait=wait_exponential(multiplier=2, min=1),
-        stop=stop_after_attempt(7),
+        stop=stop_after_attempt(5),
     )
     def call_soap(self, endpoint: str, params: Dict[str, Any]) -> Any:
         return getattr(self.soap_client, endpoint)(**params)
