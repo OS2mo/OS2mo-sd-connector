@@ -1,13 +1,8 @@
 # type: ignore
 from abc import ABC
 from abc import abstractmethod
-from functools import partial
 from functools import lru_cache
-from io import StringIO
 from typing import Any
-from typing import Callable
-from typing import Iterator
-from typing import Tuple
 
 import httpx
 from requests import Session
@@ -21,28 +16,30 @@ from zeep.transports import AsyncTransport
 from zeep.transports import Transport
 
 
+WSDL_PREFIX = "https://service.sd.dk/sdws/"
 WSDLS = [
-    "https://service.sd.dk/sdws/GetDepartment20080201WSDL",
-    "https://service.sd.dk/sdws/xml/schema/sd.dk/xml.wsdl/20111201/GetDepartment20111201.wsdl",
-    "https://service.sd.dk/sdws/xml/schema/sd.dk/xml.wsdl/20190701/GetDepartmentParent20190701.wsdl",
-    "https://service.sd.dk/sdws/GetInstitution20080201WSDL",
-    "https://service.sd.dk/sdws/xml/schema/sd.dk/xml.wsdl/20111201/GetInstitution20111201.wsdl",
-    "https://service.sd.dk/sdws/GetOrganizationWSDL",
-    "https://service.sd.dk/sdws/GetOrganization20080201WSDL",
-    "https://service.sd.dk/sdws/xml/schema/sd.dk/xml.wsdl/20111201/GetOrganization20111201.wsdl",
-    "https://service.sd.dk/sdws/GetEmployment20070401WSDL",
-    "https://service.sd.dk/sdws/xml/schema/sd.dk/xml.wsdl/20111201/GetEmployment20111201.wsdl",
-    "https://service.sd.dk/sdws/GetEmploymentChanged20070401WSDL",
-    "https://service.sd.dk/sdws/xml/schema/sd.dk/xml.wsdl/20111201/GetEmploymentChanged20111201.wsdl",
-    "https://service.sd.dk/sdws/GetEmploymentChangedAtDate20070401WSDL",
-    "https://service.sd.dk/sdws/xml/schema/sd.dk/xml.wsdl/20111201/GetEmploymentChangedAtDate20111201.wsdl",
-    "https://service.sd.dk/sdws/GetPersonWSDL",
-    "https://service.sd.dk/sdws/xml/schema/sd.dk/xml.wsdl/20111201/GetPerson20111201.wsdl",
-    "https://service.sd.dk/sdws/GetPersonChangedAtDateWSDL",
-    "https://service.sd.dk/sdws/xml/schema/sd.dk/xml.wsdl/20111201/GetPersonChangedAtDate20111201.wsdl",
-    "https://service.sd.dk/sdws/GetProfessionWSDL",
-    "https://service.sd.dk/sdws/GetProfession20080201WSDL",
+    "GetDepartment20080201WSDL",
+    "xml/schema/sd.dk/xml.wsdl/20111201/GetDepartment20111201.wsdl",
+    "xml/schema/sd.dk/xml.wsdl/20190701/GetDepartmentParent20190701.wsdl",
+    "GetInstitution20080201WSDL",
+    "xml/schema/sd.dk/xml.wsdl/20111201/GetInstitution20111201.wsdl",
+    "GetOrganizationWSDL",
+    "GetOrganization20080201WSDL",
+    "xml/schema/sd.dk/xml.wsdl/20111201/GetOrganization20111201.wsdl",
+    "GetEmployment20070401WSDL",
+    "xml/schema/sd.dk/xml.wsdl/20111201/GetEmployment20111201.wsdl",
+    "GetEmploymentChanged20070401WSDL",
+    "xml/schema/sd.dk/xml.wsdl/20111201/GetEmploymentChanged20111201.wsdl",
+    "GetEmploymentChangedAtDate20070401WSDL",
+    "xml/schema/sd.dk/xml.wsdl/20111201/GetEmploymentChangedAtDate20111201.wsdl",
+    "GetPersonWSDL",
+    "xml/schema/sd.dk/xml.wsdl/20111201/GetPerson20111201.wsdl",
+    "GetPersonChangedAtDateWSDL",
+    "xml/schema/sd.dk/xml.wsdl/20111201/GetPersonChangedAtDate20111201.wsdl",
+    "GetProfessionWSDL",
+    "GetProfession20080201WSDL",
 ]
+
 
 class SDSoapClientBase(ABC):
     """SOAP Client for SDs SOAP service.
@@ -76,7 +73,7 @@ class SDSoapClientBase(ABC):
     def __init__(self, username: str, password: str):
         # Load our wsdls (specifying all endpoints) into the client
         for wsdl in WSDLS:
-            client = self._create_client(wsdl, username, password)
+            client = self._create_client(WSDL_PREFIX + wsdl, username, password)
             service = client.service
             assert len(service._operations) == 1
 
@@ -87,7 +84,7 @@ class SDSoapClientBase(ABC):
             setattr(self, method_name, operation)
 
     @abstractmethod
-    def _create_client(self, wsdl: StringIO, username: str, password: str) -> Any:
+    def _create_client(self, wsdl: str, username: str, password: str) -> Any:
         raise NotImplementedError
 
     @abstractmethod
@@ -108,12 +105,16 @@ class AsyncSDSoapClient(SDSoapClientBase):
         wsdl_client = httpx.Client(auth=(username, password), timeout=60)
         return self.httpx_client, wsdl_client
 
-    def _create_client(
-        self, wsdl: StringIO, username: str, password: str
-    ) -> AsyncClient:
+    def _create_client(self, wsdl: str, username: str, password: str) -> AsyncClient:
         httpx_client, wsdl_client = self._create_async_client(username, password)
         client = AsyncClient(
-            wsdl, transport=AsyncTransport(client=httpx_client, wsdl_client=wsdl_client, cache=SqliteCache(), timeout=60)
+            wsdl,
+            transport=AsyncTransport(
+                client=httpx_client,
+                wsdl_client=wsdl_client,
+                cache=SqliteCache(),
+                timeout=60,
+            ),
         )
         return client
 
@@ -133,9 +134,11 @@ class SDSoapClient(SDSoapClientBase):
         session.auth = HTTPBasicAuth(username, password)
         return session
 
-    def _create_client(self, wsdl: StringIO, username: str, password: str) -> Client:
+    def _create_client(self, wsdl: str, username: str, password: str) -> Client:
         session = self._create_session(username, password)
-        client = Client(wsdl, transport=Transport(session=session, cache=SqliteCache(), timeout=60))
+        client = Client(
+            wsdl, transport=Transport(session=session, cache=SqliteCache(), timeout=60)
+        )
         return client
 
     def _create_service_proxy(self, client: Client, binding: Any, **kwargs) -> Any:
