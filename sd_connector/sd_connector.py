@@ -1,20 +1,21 @@
 # SPDX-FileCopyrightText: Magenta ApS
 #
 # SPDX-License-Identifier: MPL-2.0
-
-import datetime
-from functools import partial
-from typing import Optional, Union
+from datetime import date
+from datetime import datetime
+from datetime import time
+from functools import wraps
+from typing import Any
+from typing import Dict
+from typing import Optional
+from typing import Union
 from uuid import UUID
 
-import aiohttp
-from xmltodict import parse
-
-xmlparse = partial(parse, dict_constructor=dict)
-
-
-class SDAPIException(Exception):
-    pass
+from sd_soap_client import AsyncSDSoapClient
+from sd_soap_client import SDSoapClient
+from tenacity import retry
+from tenacity import stop_after_attempt
+from tenacity import wait_exponential
 
 
 def is_uuid(uuid: Union[str, UUID]) -> bool:
@@ -31,131 +32,446 @@ def is_uuid(uuid: Union[str, UUID]) -> bool:
         return False
 
 
-def today() -> datetime.date:
-    today = datetime.date.today()
+def today() -> date:
+    today = date.today()
     return today
+
+
+def set_identifier(
+    identifier: str, value: Optional[Union[str, UUID]], params: Dict[str, Any]
+) -> Dict[str, Any]:
+    if value is None:
+        return params
+    if is_uuid(value):
+        params[identifier + "UUIDIdentifier"] = str(value)
+    else:
+        params[identifier + "Identifier"] = value
+    return params
+
+
+def set_dates(
+    start_date: Optional[date],
+    end_date: Optional[date],
+    params: Dict[str, Any],
+) -> Dict[str, Any]:
+    start_date = start_date or today()
+    end_date = end_date or today()
+    params.update({"ActivationDate": start_date, "DeactivationDate": end_date})
+    return params
+
+
+def set_datetimes(
+    start_datetime: Optional[datetime],
+    end_datetime: Optional[datetime],
+    params: Dict[str, Any],
+) -> Dict[str, Any]:
+    start_datetime = start_datetime or datetime.combine(today(), time(0, 0))
+    end_datetime = end_datetime or datetime.combine(today(), time(23, 59, 59))
+    params.update(
+        {
+            "ActivationDate": start_datetime.date(),
+            "ActivationTime": start_datetime.time(),
+            "DeactivationDate": end_datetime.date(),
+            "DeactivationTime": end_datetime.time(),
+        }
+    )
+    return params
+
+
+def getDepartmentParams(
+    institution_identifier: Optional[Union[str, UUID]] = None,
+    department_identifier: Optional[Union[str, UUID]] = None,
+    department_level_identifier: Optional[str] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    contact_information_indicator: bool = False,
+    department_name_indicator: bool = True,
+    employment_department_indicator: bool = False,
+    postal_address_indicator: bool = False,
+    production_unit_indicator: bool = False,
+    uuid_indicator: bool = True,
+) -> Dict[str, Any]:
+    params: Dict[str, Any] = {
+        "ContactInformationIndicator": contact_information_indicator,
+        "DepartmentNameIndicator": department_name_indicator,
+        "EmploymentDepartmentIndicator": employment_department_indicator,
+        "PostalAddressIndicator": postal_address_indicator,
+        "ProductionUnitIndicator": production_unit_indicator,
+        "UUIDIndicator": uuid_indicator,
+    }
+    params = set_identifier("Institution", institution_identifier, params)
+    params = set_identifier("Department", department_identifier, params)
+    if department_level_identifier:
+        params["DepartmentLevelIdentifier"] = department_level_identifier
+    params = set_dates(start_date, end_date, params)
+    return params
+
+
+def getDepartmentParentParams(
+    department_uuid_identifier: UUID,
+    effective_date: Optional[date] = None,
+) -> Dict[str, Any]:
+    params: Dict[str, Any] = {
+        "EffectiveDate": effective_date or today(),
+        "DepartmentUUIDIdentifier": str(department_uuid_identifier),
+    }
+    return params
+
+
+def getInstitutionParams(
+    region_identifier: Optional[Union[str, UUID]] = None,
+    institution_identifier: Optional[Union[str, UUID]] = None,
+    administration_indicator: bool = False,
+    contact_information_indicator: bool = False,
+    postal_address_indicator: bool = False,
+    production_unit_indicator: bool = False,
+    uuid_indicator: bool = True,
+) -> Dict[str, Any]:
+    params: Dict[str, Any] = {
+        "AdministrationIndicator": administration_indicator,
+        "ContactInformationIndicator": contact_information_indicator,
+        "PostalAddressIndicator": postal_address_indicator,
+        "ProductionUnitIndicator": production_unit_indicator,
+        "UUIDIndicator": uuid_indicator,
+    }
+    params = set_identifier("Region", region_identifier, params)
+    params = set_identifier("Institution", institution_identifier, params)
+    return params
+
+
+def getOrganizationParams(
+    institution_identifier: Optional[Union[str, UUID]] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    uuid_indicator: bool = True,
+) -> Dict[str, Any]:
+    params: Dict[str, Any] = {
+        "UUIDIndicator": uuid_indicator,
+    }
+    params = set_identifier("Institution", institution_identifier, params)
+    params = set_dates(start_date, end_date, params)
+    return params
+
+
+# @alias_param("person_civil_registration_identifier", "cpr_identifier")
+def getEmploymentParams(
+    institution_identifier: str,
+    person_civil_registration_identifier: Optional[str] = None,
+    employment_identifier: Optional[str] = None,
+    department_identifier: Optional[str] = None,
+    department_level_identifier: Optional[str] = None,
+    effective_date: Optional[date] = None,
+    status_active_indicator: bool = True,
+    status_passive_indicator: bool = False,
+    department_indicator: bool = True,
+    employment_status_indicator: bool = True,
+    profession_indicator: bool = True,
+    salary_agreement_indicator: bool = False,
+    salary_code_group_indicator: bool = False,
+    working_time_indicator: bool = False,
+    uuid_indicator: bool = True,
+) -> Dict[str, Any]:
+    params: Dict[str, Any] = {
+        "InstitutionIdentifier": institution_identifier,
+        "PersonCivilRegistrationIdentifier": person_civil_registration_identifier,
+        "EmploymentIdentifier": employment_identifier,
+        "DepartmentIdentifier": department_identifier,
+        "EffectiveDate": effective_date or today(),
+        "StatusActiveIndicator": status_active_indicator,
+        "StatusPassiveIndicator": status_passive_indicator,
+        "DepartmentIndicator": department_indicator,
+        "EmploymentStatusIndicator": employment_status_indicator,
+        "ProfessionIndicator": profession_indicator,
+        "SalaryAgreementIndicator": salary_agreement_indicator,
+        "SalaryCodeGroupIndicator": salary_code_group_indicator,
+        "WorkingTimeIndicator": working_time_indicator,
+        "UUIDIndicator": uuid_indicator,
+    }
+    if department_level_identifier:
+        params["DepartmentLevelIdentifier"] = department_level_identifier
+    return params
+
+
+def getEmploymentChangedParams(
+    institution_identifier: str,
+    person_civil_registration_identifier: Optional[str] = None,
+    employment_identifier: Optional[str] = None,
+    department_identifier: Optional[str] = None,
+    department_level_identifier: Optional[str] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    department_indicator: bool = True,
+    employment_status_indicator: bool = True,
+    profession_indicator: bool = True,
+    salary_agreement_indicator: bool = False,
+    salary_code_group_indicator: bool = False,
+    working_time_indicator: bool = False,
+    uuid_indicator: bool = True,
+) -> Dict[str, Any]:
+    params: Dict[str, Any] = {
+        "InstitutionIdentifier": institution_identifier,
+        "PersonCivilRegistrationIdentifier": person_civil_registration_identifier,
+        "EmploymentIdentifier": employment_identifier,
+        "DepartmentIdentifier": department_identifier,
+        "DepartmentIndicator": department_indicator,
+        "EmploymentStatusIndicator": employment_status_indicator,
+        "ProfessionIndicator": profession_indicator,
+        "SalaryAgreementIndicator": salary_agreement_indicator,
+        "SalaryCodeGroupIndicator": salary_code_group_indicator,
+        "WorkingTimeIndicator": working_time_indicator,
+        "UUIDIndicator": uuid_indicator,
+    }
+    if department_level_identifier:
+        params["DepartmentLevelIdentifier"] = department_level_identifier
+    params = set_dates(start_date, end_date, params)
+    return params
+
+
+def getEmploymentChangedAtDateParams(
+    institution_identifier: str,
+    person_civil_registration_identifier: Optional[str] = None,
+    employment_identifier: Optional[str] = None,
+    department_identifier: Optional[str] = None,
+    department_level_identifier: Optional[str] = None,
+    start_datetime: Optional[datetime] = None,
+    end_datetime: Optional[datetime] = None,
+    department_indicator: bool = True,
+    employment_status_indicator: bool = True,
+    profession_indicator: bool = True,
+    salary_agreement_indicator: bool = False,
+    salary_code_group_indicator: bool = False,
+    working_time_indicator: bool = False,
+    uuid_indicator: bool = True,
+    future_information_indicator: bool = False,
+) -> Dict[str, Any]:
+    params: Dict[str, Any] = {
+        "InstitutionIdentifier": institution_identifier,
+        "PersonCivilRegistrationIdentifier": person_civil_registration_identifier,
+        "EmploymentIdentifier": employment_identifier,
+        "DepartmentIdentifier": department_identifier,
+        "DepartmentIndicator": department_indicator,
+        "EmploymentStatusIndicator": employment_status_indicator,
+        "ProfessionIndicator": profession_indicator,
+        "SalaryAgreementIndicator": salary_agreement_indicator,
+        "SalaryCodeGroupIndicator": salary_code_group_indicator,
+        "WorkingTimeIndicator": working_time_indicator,
+        "UUIDIndicator": uuid_indicator,
+        "FutureInformationIndicator": future_information_indicator,
+    }
+    if department_level_identifier:
+        params["DepartmentLevelIdentifier"] = department_level_identifier
+    params = set_datetimes(start_datetime, end_datetime, params)
+    return params
+
+
+def getPersonParams(
+    institution_identifier: str,
+    person_civil_registration_identifier: Optional[str] = None,
+    employment_identifier: Optional[str] = None,
+    department_identifier: Optional[str] = None,
+    department_level_identifier: Optional[str] = None,
+    effective_date: Optional[date] = None,
+    status_active_indicator: bool = True,
+    status_passive_indicator: bool = False,
+    contact_information_indicator: bool = False,
+    postal_address_indicator: bool = False,
+) -> Dict[str, Any]:
+    params: Dict[str, Any] = {
+        "InstitutionIdentifier": institution_identifier,
+        "PersonCivilRegistrationIdentifier": person_civil_registration_identifier,
+        "EmploymentIdentifier": employment_identifier,
+        "DepartmentIdentifier": department_identifier,
+        "EffectiveDate": effective_date or today(),
+        "StatusActiveIndicator": status_active_indicator,
+        "StatusPassiveIndicator": status_passive_indicator,
+        "ContactInformationIndicator": contact_information_indicator,
+        "PostalAddressIndicator": postal_address_indicator,
+    }
+    if department_level_identifier:
+        params["DepartmentLevelIdentifier"] = department_level_identifier
+    return params
+
+
+def getPersonChangedAtDateParams(
+    institution_identifier: str,
+    person_civil_registration_identifier: Optional[str] = None,
+    employment_identifier: Optional[str] = None,
+    department_identifier: Optional[str] = None,
+    department_level_identifier: Optional[str] = None,
+    start_datetime: Optional[datetime] = None,
+    end_datetime: Optional[datetime] = None,
+    contact_information_indicator: bool = False,
+    postal_address_indicator: bool = False,
+) -> Dict[str, Any]:
+    params: Dict[str, Any] = {
+        "InstitutionIdentifier": institution_identifier,
+        "PersonCivilRegistrationIdentifier": person_civil_registration_identifier,
+        "EmploymentIdentifier": employment_identifier,
+        "DepartmentIdentifier": department_identifier,
+        "ContactInformationIndicator": contact_information_indicator,
+        "PostalAddressIndicator": postal_address_indicator,
+    }
+    if department_level_identifier:
+        params["DepartmentLevelIdentifier"] = department_level_identifier
+    params = set_datetimes(start_datetime, end_datetime, params)
+    return params
+
+
+def getProfessionParams(
+    institution_identifier: str,
+    job_position_identifier: Optional[str] = None,
+) -> Dict[str, Any]:
+    params: Dict[str, Any] = {
+        "InstitutionIdentifier": institution_identifier,
+        "JobPositionIdentifier": job_position_identifier,
+    }
+    return params
+
+
+class AsyncSDConnector:
+    def __init__(
+        self,
+        username: str,
+        password: str,
+    ):
+        self.asoap_client = AsyncSDSoapClient(username, password)
+
+    async def aclose(self) -> None:
+        await self.asoap_client.aclose()
+
+    @retry(
+        reraise=True,
+        wait=wait_exponential(multiplier=2, min=1),
+        stop=stop_after_attempt(7),
+    )
+    async def call_soap(self, endpoint: str, params: Dict[str, Any]) -> Any:
+        return await getattr(self.asoap_client, endpoint)(**params)
+
+    # Organization
+    # -------------
+    @wraps(getDepartmentParams)
+    async def getDepartment(self, *args: Any, **kwargs: Any) -> Any:
+        params = getDepartmentParams(*args, **kwargs)
+        return await self.call_soap("GetDepartment20111201", params)
+
+    @wraps(getDepartmentParentParams)
+    async def getDepartmentParent(self, *args: Any, **kwargs: Any) -> Any:
+        params = getDepartmentParentParams(*args, **kwargs)
+        return await self.call_soap("GetDepartmentParent20190701", params)
+
+    @wraps(getInstitutionParams)
+    async def getInstitution(self, *args: Any, **kwargs: Any) -> Any:
+        params = getInstitutionParams(*args, **kwargs)
+        return await self.call_soap("GetInstitution20111201", params)
+
+    @wraps(getOrganizationParams)
+    async def getOrganization(self, *args: Any, **kwargs: Any) -> Any:
+        params = getOrganizationParams(*args, **kwargs)
+        return await self.call_soap("GetOrganization20111201", params)
+
+    # Person and employment
+    # ----------------------
+    @wraps(getEmploymentParams)
+    async def getEmployment(self, *args: Any, **kwargs: Any) -> Any:
+        params = getEmploymentParams(*args, **kwargs)
+        return await self.call_soap("GetEmployment20111201", params)
+
+    @wraps(getEmploymentChangedParams)
+    async def getEmploymentChanged(self, *args: Any, **kwargs: Any) -> Any:
+        params = getEmploymentChangedParams(*args, **kwargs)
+        return await self.call_soap("GetEmploymentChanged20111201", params)
+
+    @wraps(getEmploymentChangedAtDateParams)
+    async def getEmploymentChangedAtDate(self, *args: Any, **kwargs: Any) -> Any:
+        params = getEmploymentChangedAtDateParams(*args, **kwargs)
+        return await self.call_soap("GetEmploymentChangedAtDate20111201", params)
+
+    @wraps(getPersonParams)
+    async def getPerson(self, *args: Any, **kwargs: Any) -> Any:
+        params = getPersonParams(*args, **kwargs)
+        return await self.call_soap("GetPerson20111201", params)
+
+    @wraps(getPersonChangedAtDateParams)
+    async def getPersonChangedAtDate(self, *args: Any, **kwargs: Any) -> Any:
+        params = getPersonChangedAtDateParams(*args, **kwargs)
+        return await self.call_soap("GetPersonChangedAtDate20111201", params)
+
+    # Profession
+    # -----------
+    @wraps(getProfessionParams)
+    async def getProfession(self, *args: Any, **kwargs: Any) -> Any:
+        params = getProfessionParams(*args, **kwargs)
+        return await self.call_soap("GetProfession20080201", params)
 
 
 class SDConnector:
     def __init__(
         self,
-        institution_identifier: Union[str, UUID],
-        sd_username: str,
-        sd_password: str,
-        sd_base_url: str = "https://service.sd.dk/sdws/",
+        username: str,
+        password: str,
     ):
-        self.institution_identifier = institution_identifier
-        self.auth = aiohttp.BasicAuth(sd_username, sd_password)
-        self.base_url = sd_base_url
+        self.soap_client = SDSoapClient(username, password)
 
-    def _enrich_with_institution(self, params: dict) -> dict:
-        if is_uuid(self.institution_identifier):
-            params["InstitutionUUIDIdentifier"] = str(self.institution_identifier)
-        else:
-            params["InstitutionIdentifier"] = self.institution_identifier
-        return params
+    #    @retry(
+    #        reraise=True,
+    #        wait=wait_exponential(multiplier=2, min=1),
+    #        stop=stop_after_attempt(7),
+    #    )
+    def call_soap(self, endpoint: str, params: Dict[str, Any]) -> Any:
+        return getattr(self.soap_client, endpoint)(**params)
 
-    def _enrich_with_department(
-        self, params: dict, department_identifier: Optional[Union[str, UUID]] = None
-    ) -> dict:
-        if department_identifier is None:
-            return params
-        if is_uuid(department_identifier):
-            params["DepartmentUUIDIdentifier"] = str(department_identifier)
-        else:
-            params["DepartmentIdentifier"] = department_identifier
-        return params
+    # Organization
+    # -------------
+    @wraps(getDepartmentParams)
+    def getDepartment(self, *args: Any, **kwargs: Any) -> Any:
+        params = getDepartmentParams(*args, **kwargs)
+        return self.call_soap("GetDepartment20111201", params)
 
-    def _enrich_with_dates(
-        self,
-        params: dict,
-        start_date: Optional[datetime.date] = None,
-        end_date: Optional[datetime.date] = None,
-    ) -> dict:
-        start_date = start_date or today()
-        end_date = end_date or today()
-        params.update(
-            {
-                "ActivationDate": start_date.strftime("%d.%m.%Y"),
-                "DeactivationDate": end_date.strftime("%d.%m.%Y"),
-            }
-        )
-        return params
+    @wraps(getDepartmentParentParams)
+    def getDepartmentParent(self, *args: Any, **kwargs: Any) -> Any:
+        params = getDepartmentParentParams(*args, **kwargs)
+        return self.call_soap("GetDepartmentParent20190701", params)
 
-    async def _send_request_xml(self, url: str, params: dict) -> str:
-        """Fire a requests against SD.
+    @wraps(getInstitutionParams)
+    def getInstitution(self, *args: Any, **kwargs: Any) -> Any:
+        params = getInstitutionParams(*args, **kwargs)
+        return self.call_soap("GetInstitution20111201", params)
 
-        Utilizes _sd_request to fire the actual request, which in turn utilize
-        _sd_lookup_cache for caching.
-        """
-        # logger.info("Retrieve: {}".format(url))
-        # logger.debug("Params: {}".format(params))
+    @wraps(getOrganizationParams)
+    def getOrganization(self, *args: Any, **kwargs: Any) -> Any:
+        params = getOrganizationParams(*args, **kwargs)
+        return self.call_soap("GetOrganization20111201", params)
 
-        full_url = self.base_url + url
+    # Person and employment
+    # ----------------------
+    @wraps(getEmploymentParams)
+    def getEmployment(self, *args: Any, **kwargs: Any) -> Any:
+        params = getEmploymentParams(*args, **kwargs)
+        return self.call_soap("GetEmployment20111201", params)
 
-        async with aiohttp.ClientSession(raise_for_status=True) as session:
-            async with session.get(full_url, auth=self.auth, params=params) as response:
-                # We always expect SD to return UTF8 encoded XML
-                assert response.headers["Content-Type"] == "text/xml;charset=UTF-8"
-                return await response.text()
+    @wraps(getEmploymentChangedParams)
+    def getEmploymentChanged(self, *args: Any, **kwargs: Any) -> Any:
+        params = getEmploymentChangedParams(*args, **kwargs)
+        return self.call_soap("GetEmploymentChanged20111201", params)
 
-    async def _send_request_json(self, url: str, params: dict) -> dict:
-        xml_response = await self._send_request_xml(url, params)
-        dict_response = xmlparse(xml_response)
-        if "Envelope" in dict_response:
-            raise SDAPIException(dict_response["Envelope"])
-        return dict_response
+    @wraps(getEmploymentChangedAtDateParams)
+    def getEmploymentChangedAtDate(self, *args: Any, **kwargs: Any) -> Any:
+        params = getEmploymentChangedAtDateParams(*args, **kwargs)
+        return self.call_soap("GetEmploymentChangedAtDate20111201", params)
 
-    async def getOrganization(
-        self,
-        start_date: Optional[datetime.date] = None,
-        end_date: Optional[datetime.date] = None,
-    ) -> dict:
-        params = {
-            "UUIDIndicator": "true",
-        }
-        params = self._enrich_with_dates(params, start_date, end_date)
-        params = self._enrich_with_institution(params)
-        url = "GetOrganization20111201"
-        dict_response = await self._send_request_json(url, params)
-        return dict_response[url]
+    @wraps(getPersonParams)
+    def getPerson(self, *args: Any, **kwargs: Any) -> Any:
+        params = getPersonParams(*args, **kwargs)
+        return self.call_soap("GetPerson20111201", params)
 
-    async def getDepartment(
-        self,
-        department_identifier: Optional[Union[str, UUID]] = None,
-        department_level_identifier: Optional[str] = None,
-        start_date: Optional[datetime.date] = None,
-        end_date: Optional[datetime.date] = None,
-    ) -> dict:
-        params = {
-            "ContactInformationIndicator": "true",
-            "DepartmentNameIndicator": "true",
-            "EmploymentDepartmentIndicator": "false",
-            "PostalAddressIndicator": "true",
-            "ProductionUnitIndicator": "true",
-            "UUIDIndicator": "true",
-        }
-        if department_level_identifier:
-            params["DepartmentLevelIdentifier"] = department_level_identifier
-        params = self._enrich_with_dates(params, start_date, end_date)
-        params = self._enrich_with_department(params, department_identifier)
-        params = self._enrich_with_institution(params)
+    @wraps(getPersonChangedAtDateParams)
+    def getPersonChangedAtDate(self, *args: Any, **kwargs: Any) -> Any:
+        params = getPersonChangedAtDateParams(*args, **kwargs)
+        return self.call_soap("GetPersonChangedAtDate20111201", params)
 
-        url = "GetDepartment20111201"
-        dict_response = await self._send_request_json(url, params)
-        return dict_response[url]
-
-    async def getDepartmentParent(
-        self,
-        department_uuid_identifier: Union[str, UUID],
-        effective_date: Optional[datetime.date] = None,
-    ) -> dict:
-        effective_date = effective_date or today()
-        params = {
-            "EffectiveDate": effective_date.strftime("%d.%m.%Y"),
-            "DepartmentUUIDIdentifier": str(department_uuid_identifier),
-        }
-
-        url = "GetDepartmentParent20190701"
-        dict_response = await self._send_request_json(url, params)
-        return dict_response[url]
+    # Profession
+    # -----------
+    @wraps(getProfessionParams)
+    def getProfession(self, *args: Any, **kwargs: Any) -> Any:
+        params = getProfessionParams(*args, **kwargs)
+        return self.call_soap("GetProfession20080201", params)

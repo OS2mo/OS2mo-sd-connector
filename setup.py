@@ -1,7 +1,6 @@
 # SPDX-FileCopyrightText: Magenta ApS
 #
 # SPDX-License-Identifier: MPL-2.0
-
 import setuptools
 
 with open("README.md", "r", encoding="utf-8") as fh:
@@ -23,24 +22,24 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     install_requires=[
-        'aiohttp',
-        'xmltodict',
+        "aiohttp",
+        "xmltodict",
     ],
     extras_require={
-        'lint': [
-            'mypy',
-            'black',
-            'isort',
+        "lint": [
+            "mypy",
+            "black",
+            "isort",
         ],
-        'test': [
-            'pytest',
-            'pytest-cov',
+        "test": [
+            "pytest",
+            "pytest-cov",
         ],
-        'dist': [
-            'build',
-            'twine',
+        "dist": [
+            "build",
+            "twine",
         ],
     },
     packages=setuptools.find_packages(),
-    python_requires='>=3.6',
+    python_requires=">=3.6",
 )
