@@ -412,11 +412,11 @@ class SDConnector:
     ):
         self.soap_client = SDSoapClient(username, password)
 
-    #    @retry(
-    #        reraise=True,
-    #        wait=wait_exponential(multiplier=2, min=1),
-    #        stop=stop_after_attempt(7),
-    #    )
+    @retry(
+        reraise=True,
+        wait=wait_exponential(multiplier=2, min=1),
+        stop=stop_after_attempt(7),
+    )
     def call_soap(self, endpoint: str, params: Dict[str, Any]) -> Any:
         return getattr(self.soap_client, endpoint)(**params)
 
