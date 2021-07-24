@@ -1,115 +1,94 @@
-# SPDX-FileCopyrightText: Magenta ApS
-#
-# SPDX-License-Identifier: MPL-2.0
+---
+# ---------------------------------------------------------------------------
+# Global
+# ---------------------------------------------------------------------------
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  PRE_COMMIT_HOME: "$CI_PROJECT_DIR/.cache/pre-commit"
 
-################################################################################
-# Changes to this file requires approval from Labs. Please add a person from   #
-# Labs as required approval to your MR if you have any changes.                #
-################################################################################
-
-# For `twine upload` to work, the following envionment variables have to set in
-# the Gitlab UI.
-# RELEASE_PYPI_USERNAME
-# RELEASE_PYPI_PASSWORD
+cache:
+  key: "${CI_JOB_NAME}"
+  paths:
+    - .venv/
+    - .cache/pip
+    - .cache/pre-commit
 
 stages:
   - lint
   - test
-  - release
   - deploy
 
-# Lint stage
-#############
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
 
-.lint-default: &lint-default
+# ---------------------------------------------------------------------------
+# Templates
+# ---------------------------------------------------------------------------
+.install-deps-template: &install-deps
+  before_script:
+    - pip install poetry
+    - poetry --version
+    - poetry config virtualenvs.in-project true
+    - poetry install -vv
+    - poetry run pre-commit install
+
+.lint-template: &lint
+  <<: *install-deps
+  image: python:3.8
   stage: lint
+
+.test-template: &test # Coverage needed too
+  <<: *install-deps
   needs: []
-  image: python:3.7
-  services: []
-  tags:
-    - docker
-
-TypeCheck Python:
-  <<: *lint-default
-  before_script:
-    - pip3 install -e .[lint]
-  script:
-    - python -m mypy --ignore-missing-imports --strict-optional --no-implicit-optional sd_connector tests
-
-Lint Python:
-  <<: *lint-default
-  before_script:
-    - pip3 install -e .[lint]
-  script:
-    - python -m black --diff --check sd_connector tests
-    - python -m isort --profile black --diff --check-only sd_connector tests
-
-REUSE compliance:
-  <<: *lint-default
-  image:
-    name: fsfe/reuse:latest
-    entrypoint: [""]
-  script:
-    - reuse lint
-
-# Test stage
-############
-
-.test-default: &test-default
   stage: test
+  script: poetry run pytest tests/ --cov sd_connector/ --cov-fail-under=0
+
+.deploy-template: &deploy
+  <<: *install-deps
+  image: python:3.8
+  stage: deploy
+  rules:
+    # Matches <version core> from SemVer 2.0.0 BNF grammar. Ex. 2.3.4, but not 2.3.4-rc
+    - if: $CI_COMMIT_TAG =~ /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
+
+# ---------------------------------------------------------------------------
+# Lint
+# ---------------------------------------------------------------------------
+Lint Project:
+  <<: *lint
+  script:
+    - poetry run pre-commit run --all-files
+
+# ---------------------------------------------------------------------------
+# Test
+# ---------------------------------------------------------------------------
+Test on Python 3.8:
+  <<: *test
+  image: python:3.8
+
+Test on Python 3.9:
+  <<: *test
+  image: python:3.9
+
+# ---------------------------------------------------------------------------
+# Deploy
+# ---------------------------------------------------------------------------
+Deploy to PyPI:
+  <<: *deploy
+  script: poetry publish --build -u OS2mo -p $PYPI_PWD
+
+
+pages:
+  <<: *install-deps
+  image: python:3.8
+  stage: deploy
   needs: []
-  services: []
-  before_script:
-    - pip3 install -e .[test]
-  tags:
-    - docker
-
-Unit-test:
-  <<: *test-default
-  image: python:3.7
   script:
-    - pytest
-      --cov=sd_connector
-      --junitxml $CI_PROJECT_DIR/junit.xml
-      --cov-report html:$CI_PROJECT_DIR/coverage-html
-      --cov-report term
-      -p no:cacheprovider
-      --color=yes
-      tests/
-  coverage: '/TOTAL.*\s+(\d+%)$/'
+    - poetry run mkdocs build --strict --site-dir public
   artifacts:
-    when: always
     paths:
-      - $CI_PROJECT_DIR/coverage-html
-    reports:
-      junit: $CI_PROJECT_DIR/junit.xml
-
-
-# Release stage
-###############
-
-.release-default: &release-default
-  stage: release
-  needs: ["Unit-test"]
-  image: python:3.7
-  services: []
-  before_script:
-    - pip3 install -e .[dist]
-    - python3 -m build
-  tags:
-    - docker
-
-Release dev:
-  <<: *release-default
+      - public
   rules:
-    - if: $CI_COMMIT_REF_NAME == "master"
-  script:
-    - python3 -m twine upload --username ${RELEASE_PYPI_USERNAME} --password ${RELEASE_PYPI_PASSWORD} --repository testpypi dist/*
-
-Release master:
-  <<: *release-default
-  rules:
-      # Matches <version core> from SemVer 2.0.0 BNF grammar. Ex. 2.3.4, but not 2.3.4-rc
-      - if: $CI_COMMIT_TAG =~ /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
-  script:
-    - python3 -m twine upload --username ${RELEASE_PYPI_USERNAME} --password ${RELEASE_PYPI_PASSWORD} --repository pypi dist/*
+    - if: '$CI_COMMIT_BRANCH == "development"'

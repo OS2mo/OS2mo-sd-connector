@@ -1,10 +1,30 @@
-# SPDX-FileCopyrightText: Magenta ApS
-#
-# SPDX-License-Identifier: MPL-2.0
+[tool.poetry]
+name = "os2mo-sd-connector"
+version = "0.0.2"
+description = "Connector library for SDLon webservices"
+authors = ["Magenta <info@magenta.dk>"]
+license = "MPL-2.0"
+readme = "README.md"
+homepage = "https://magenta.dk/"
+repository = "https://git.magenta.dk/rammearkitektur/os2mo-sd-connector"
+keywords = ["os2mo", "lora"]
+
+[tool.poetry.dependencies]
+python = "^3.6.2"
+more-itertools = "^8.8.0"
+zeep = {extras = ["httpx"], version = "^4.0.0"}
+
+[tool.poetry.dev-dependencies]
+pytest = "^6.2.4"
+black = "^21.5b0"
+flake8 = "^3.9.1"
+mypy = "^0.812"
+reorder-python-imports = "^2.5.0"
+pre-commit = "^2.12.1"
+pytest-cov = "^2.12.1"
+mkdocs-material = "^7.2.1"
+mkdocstrings = "^0.15.2"
 
 [build-system]
-requires = [
-    "setuptools>=42",
-    "wheel"
-]
-build-backend = "setuptools.build_meta"
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
