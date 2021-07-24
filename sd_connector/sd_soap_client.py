@@ -44,12 +44,10 @@ WSDLS = [
 class SDSoapClientBase(ABC):
     """SOAP Client for SDs SOAP service.
 
-    Dynamically loads endpoints based on SDs WSDL definitions in __init__, thus
-    endpoints could dynamically appear and disappear over time.
+    Dynamically loads endpoints based on SDs WSDL definitions in __init__.
+    Thus __init__ does IO and may be slow.
 
-    This is mainly a theoretical point, as endpoints are pretty static.
-    The endpoints are versioned using dates, and only the newest endpoints should
-    be used, thus the list of endpoints reduce to the following:
+    The list of endpoints which should be used are:
 
     Organization Endpoints:
     * GetDepartment20111201
@@ -67,7 +65,7 @@ class SDSoapClientBase(ABC):
     Profession Endpoints:
     * GetProfession20080201
 
-    A derived and more user-friendly client should probably be developed.
+    A derived and more user-friendly client can be sound in sd_connector.
     """
 
     def __init__(self, username: str, password: str):
@@ -143,47 +141,3 @@ class SDSoapClient(SDSoapClientBase):
 
     def _create_service_proxy(self, client: Client, binding: Any, **kwargs) -> Any:
         return ServiceProxy(client, binding, **kwargs)
-
-
-if __name__ == "__main__":
-    import click
-    from ra_utils.async_to_sync import async_to_sync
-
-    @click.command()
-    @click.option(
-        "--username",
-        required=True,
-        help="SD username",
-    )
-    @click.option(
-        "--password",
-        required=True,
-        help="SD password",
-        prompt=True,
-        hide_input=True,
-    )
-    @click.option(
-        "--institution-identifier",
-        required=True,
-        help="SD identifier for the institution",
-    )
-    @async_to_sync
-    async def main(username: str, password: str, institution_identifier: str):
-        params = {
-            "InstitutionIdentifier": institution_identifier,
-            "AdministrationIndicator": False,
-            "ContactInformationIndicator": False,
-            "PostalAddressIndicator": False,
-            "ProductionUnitIndicator": False,
-            "UUIDIndicator": True,
-        }
-        soap_client = SDSoapClient(username, password)
-        result = soap_client.GetInstitution20111201(**params)
-        print(result)
-
-        asoap_client = AsyncSDSoapClient(username, password)
-        result = await asoap_client.GetInstitution20111201(**params)
-        await asoap_client.aclose()
-        print(result)
-
-    main()

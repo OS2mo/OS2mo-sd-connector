@@ -1,5 +1,7 @@
 import click
 from ra_utils.async_to_sync import async_to_sync
+from sd_soap_client import AsyncSDSoapClient
+from sd_soap_client import SDSoapClient
 
 from sd_connector import AsyncSDConnector
 from sd_connector import SDConnector
@@ -28,6 +30,21 @@ async def main(
     username: str,
     password: str,
 ) -> None:
+    params = {
+        "InstitutionIdentifier": institution_identifier,
+        "AdministrationIndicator": False,
+        "ContactInformationIndicator": False,
+        "PostalAddressIndicator": False,
+        "ProductionUnitIndicator": False,
+        "UUIDIndicator": True,
+    }
+    soap_client = SDSoapClient(username, password)
+    print(soap_client.GetInstitution20111201(**params))
+
+    asoap_client = AsyncSDSoapClient(username, password)
+    print(await asoap_client.GetInstitution20111201(**params))
+    await asoap_client.aclose()
+
     sd_connector = SDConnector(username, password)
     print(sd_connector.getDepartment(institution_identifier))
     print(sd_connector.getDepartmentParent("9848725d-2798-4600-9200-000006180002"))
