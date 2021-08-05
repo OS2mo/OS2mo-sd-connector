@@ -12,6 +12,7 @@ keywords = ["os2mo", "lora"]
 [tool.poetry.dependencies]
 python = "^3.6.2"
 more-itertools = "^8.8.0"
+zeep = {extras = ["httpx"], version = "^4.0.0"}
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.4"
