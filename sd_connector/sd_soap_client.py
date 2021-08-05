@@ -65,7 +65,7 @@ class SDSoapClientBase(ABC):
     Profession Endpoints:
     * GetProfession20080201
 
-    A derived and more user-friendly client can be sound in sd_connector.
+    A derived and more user-friendly client can be found in sd_connector.
     """
 
     def __init__(self, username: str, password: str):
