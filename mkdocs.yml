@@ -1,0 +1,50 @@
+site_name: RA Utils
+site_url: ""
+use_directory_urls: False
+site_description: Various utilities for OS2mo and friends
+repo_name: ra-utils
+# TODO: Use the GitHub repo when it's ready
+repo_url: https://git.magenta.dk/rammearkitektur/ra-utils
+
+nav:
+  - index.md
+  - SDConnector: modules/sd_connector.md
+  - SDSoapClient: modules/sd_soap_client.md
+  - Release History: NEWS.md
+
+theme:
+  name: "material"
+  palette:
+    - scheme:
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/weather-sunny
+  features:
+    - navigation.instant
+    - navigation.tracking
+
+
+# Adds Magenta's colour scheme
+extra_css:
+  - stylesheets/extra.css
+
+plugins:
+  - search
+  - autorefs
+  - mkdocstrings:
+      handlers:
+        python:
+          selection:
+            docstring_options:
+              replace_admonitions: no
+      watch:
+        - sd_connector
+        - tests
+
+markdown_extensions:
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
